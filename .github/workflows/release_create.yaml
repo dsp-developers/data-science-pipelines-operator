@@ -1,57 +1,118 @@
 name: "Release Create"
 run-name: Create Release
 on:
-  pull_request:
+  workflow_run:
+    workflows: ["Release Trigger Create"]
     types:
-      - closed
-    paths:
-      - config/base/params.env
+      - completed
 jobs:
+  fetch-data:
+    name: Fetch workflow payload
+    runs-on: ubuntu-latest
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    outputs:
+      target_version_tag: ${{ steps.vars.outputs.target_version_tag }}
+      previous_version_tag: ${{ steps.vars.outputs.previous_version_tag }}
+      release_branch: ${{ steps.vars.outputs.release_branch }}
+      odh_org: ${{ steps.vars.outputs.odh_org }}
+      pr_number: ${{ steps.vars.outputs.pr_number }}
+    steps:
+      - name: 'Download artifact'
+        uses: actions/github-script@v3.1.0
+        with:
+          script: |
+            var artifacts = await github.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: ${{github.event.workflow_run.id }},
+            });
+            var matchArtifact = artifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "pr"
+            })[0];
+            var download = await github.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            var fs = require('fs');
+            fs.writeFileSync('${{github.workspace}}/pr.zip', Buffer.from(download.data));
+      - run: unzip pr.zip
+      - shell: bash
+        id: vars
+        run: |
+          cat ./config.yaml
+         
+          target_version_tag=$(yq .target_version_tag ./config.yaml)
+          previous_version_tag=$(yq .previous_release_tag ./config.yaml)
+          release_branch=$(yq .release_branch ./config.yaml)
+          odh_org=$(yq .odh_org ./config.yaml)
+          pr_number=$(cat ./pr_number)
+          
+          echo "pr_number=${pr_number}" >> $GITHUB_OUTPUT
+          echo "target_version_tag=${target_version_tag}" >> $GITHUB_OUTPUT
+          echo "previous_version_tag=${previous_version_tag}" >> $GITHUB_OUTPUT
+          echo "release_branch=${release_branch}" >> $GITHUB_OUTPUT
+          echo "odh_org=${odh_org}" >> $GITHUB_OUTPUT
+
   create_tag_release:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
+    needs: fetch-data
     steps:
-
       - name: checkout
         uses: actions/checkout@v3
-
       - name: Creates a release in GitHub
         run: |
-          echo "Create a tag release for `x.y+1.z` in DSPO and DSP (e.g. `v1.3.0`)"
 
-          echo ${{github.event.pull_request.body}} > /tmp/body-file-raw.txt
-          sed -n '/^```yaml/,/^```/ p' < data.yaml | sed '/^```/ d' > /tmp/config.yaml
-          echo Parsed config from PR body:
-          yq /tmp/config.yaml
+          target_version_tag=${{ needs.fetch-data.outputs.target_version_tag }}
+          previous_version_tag=${{ needs.fetch-data.outputs.previous_version_tag }}
+          release_branch=${{ needs.fetch-data.outputs.release_branch }}
 
-          target_version_tag=$(yq .target_version_tag /tmp/config.yaml)
-          previous_version_tag=$(yq .previous_release_tag /tmp/config.yaml)
-          release_branch=$(yq .release_branch /tmp/config.yaml)
+          echo "Create a tag release for x.y+1.z in DSPO and DSP (e.g. v1.3.0)"
 
           gh release create ${target_version_tag} --target ${release_branch} --generate-notes --notes-start-tag ${previous_version_tag}
 
-          cat <<"EOF" >> /tmp/release-notes.md
+          cat <<EOF >> /tmp/release-notes.md
           Any changes for the DSP component for ${target_version_tag} can
           be found [here](https://github.com/opendatahub-io/data-science-pipelines/releases/tag/${target_version_tag}).
-          ```
           EOF
+
           echo "$(gh release view ${target_version_tag} --json body --jq .body)" >> /tmp/release-notes.md
+
+          echo "Release notes:"
+          cat /tmp/release-notes.md
+
           gh release edit ${target_version_tag} --notes-file /tmp/release-notes.md
           rm /tmp/release-notes.md
         env:
-          GITHUB_TOKEN: ${{ github.TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         shell: bash
 
   sync_manifests:
-    runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && contains(github.event.pull_request.labels.*.name, 'release')
-    needs: create_tag_release
-    steps:
-      - name: sync
-        uses: ./.github/workflows/odh-manifests-PR-sync.yml
-        secrets: inherit
-        with:
-          src_branch: ""
-          target_tag: ""
-          odh_manifest_org: ""
+    name: Sync ODH Manifests
+    uses: ./.github/workflows/odh-manifests-PR-sync.yml
+    needs: fetch-data
+    with:
+      src_branch: ${{ needs.fetch-data.outputs.release_branch }}
+      target_tag: ${{ needs.fetch-data.outputs.target_version_tag }}
+      odh_manifest_org: ${{ needs.fetch-data.outputs.odh_org }}
+    secrets: inherit
 
+  notify_pr:
+    name: Report Feedback
+    runs-on: ubuntu-latest
+    needs:
+      - sync_manifests
+      - create_tag_release
+    steps:
+      - uses: actions/checkout@v3
+      - run: |
+          
+          cat <<"EOF" >> /tmp/body-file.txt
+          Release created successfully: 
+          https://github.com/example-test-organization/data-science-pipelines-operator/releases/tag/${{ needs.fetch-data.outputs.target_version_tag }}
+          EOF
+
+          gh pr comment ${{ needs.fetch-data.outputs.pr_number }} --body-file /tmp/body-file.txt

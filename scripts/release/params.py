@@ -39,7 +39,7 @@ def fetch_quay_repo_tag_digest(quay_repo, quay_org, tag):
     tags = response['tags']
 
     if len(tags) == 0 or 'end_ts' in tags[0]:
-        print("Tag does not exist or was deleted.", file=sys.stderr)
+        print(f"Tag does not exist or was deleted for: {api_url}.", file=sys.stderr)
         exit(1)
     digest = tags[0].get('manifest_digest')
     if not digest:

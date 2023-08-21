@@ -3,7 +3,7 @@ run-name: Run Release Test Suite
 on:
   pull_request:
     branches:
-      - release_*
+      - v**
 jobs:
   trigger_tests:
     runs-on: ubuntu-latest

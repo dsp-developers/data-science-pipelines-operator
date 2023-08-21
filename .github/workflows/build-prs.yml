@@ -1,9 +1,11 @@
 name: Build images for PRs
 on:
-  workflow_run:
-    workflows: ["Trigger build images for PRs"]
-    types:
-      - completed
+  workflow_dispatch:
+
+#  workflow_run:
+#    workflows: ["Trigger build images for PRs"]
+#    types:
+#      - completed
 env:
   IMAGE_REPO_DSPO: data-science-pipelines-operator
   QUAY_ORG: opendatahub
@@ -148,7 +150,7 @@ jobs:
           exists=$(echo ${tag} | yq .tags - | yq any)
           IMAGE=quay.io/${{ env.QUAY_ORG }}/${{ env.IMAGE_REPO_DSPO }}:${{ env.TARGET_IMAGE_TAG }}
           if [[ "$exists" == "true" ]]; then
-            echo "PR Closed deleting image...${{ env.IMAGE }}."
+            echo "PR Closed deleting image...${IMAGE}."
             skopeo delete --creds ${{ env.QUAY_ID }}:${{ env.QUAY_TOKEN }} docker://${IMAGE}
           else
             echo "Deletion of image ${IMAGE} skipped because image already does not exist."

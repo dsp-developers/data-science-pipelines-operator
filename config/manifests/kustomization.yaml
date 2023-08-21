@@ -1,3 +1,2 @@
 resources:
 - bases/data-science-pipelines-operator.clusterserviceversion.yaml
-- ../default

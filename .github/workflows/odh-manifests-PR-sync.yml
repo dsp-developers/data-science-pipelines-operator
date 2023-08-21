@@ -54,7 +54,7 @@ jobs:
 
       - name: Send pull-request
         env:
-          GH_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          GH_TOKEN: ${{ secrets.DSP_DEVS_ACCESS_TOKEN }}
         run: |
           TARGET_TAG=${{ inputs.target_tag }}
 
@@ -66,7 +66,7 @@ jobs:
           git clone \
             --depth=1 \
             --branch=master \
-            https://${{ env.GH_USER_NAME}}:${{ secrets.ACCESS_TOKEN }}@github.com/$MANIFESTS_REPOSITORY \
+            https://${{ env.GH_USER_NAME}}:${{ secrets.DSP_DEVS_ACCESS_TOKEN }}@github.com/$MANIFESTS_REPOSITORY \
             $ODH_MANIFESTS_DIR
           cd $ODH_MANIFESTS_DIR
 
@@ -87,7 +87,10 @@ jobs:
           echo Rsync Complete
 
           # Commit the changes and push the feature branch to origin
+          echo "Changes Summary:"
           git status
+
+          if [[ `git status --porcelain` ]]; then
 
           git add .
           git commit -m "Update DSPO to $TARGET_TAG"
@@ -99,3 +102,9 @@ jobs:
             --title "Update DSP Operator manifests to $TARGET_TAG" \
             --head "${{ env.GH_USER_NAME}}:$BRANCH_NAME" \
             --base "master"
+
+          echo "::notice:: Changes detected in manifests, PR To ODH-Manifest Repo created."
+
+          else
+            echo "::notice:: Changes No changes to manifests requested, no pr required to odh-manifests."
+          fi

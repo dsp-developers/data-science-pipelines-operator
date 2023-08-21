@@ -90,6 +90,23 @@ Downstream maintainers of DSP should:
 * ensure `odh-stable` branches in DSP/DSPO are upto date with bug/security fixes for the appropriate DSPO/DSP versions,
   and forward any changes from `odh-stable` to their downstream DSPO/DSP repos
 
+
+## Release Automation Repo Notes
+
+In addition to manual steps outlined above, the process is also automated via gh actions and can be triggered via the
+`Release Prep` GH workflow found within this repository.
+
+Some notes to consider before using this automation:
+* ensure that a label named `release-automation` exists in the workflow directory (DSPO)
+* tests will execute on any prs made to branches starting with `v`, e.g. `v1.3.x`
+* once a pr with the label `release-automation` is merged, a release is created for the target release described in the PR body.
+  * Additional checks are made to ensure a release:
+    * if params.env was updated
+    * if pr was merged instead of closed
+    * if pr haas `release-automation` label
+    * if the pr body has appropriate info needed for creating release (e.g. tag, previous tag, etc.)
+* PRs need to be manually merged before continuing the automation (automation will not auto merge).
+
 [semver]: https://semver.org/
 [build-tags]: https://github.com/opendatahub-io/data-science-pipelines-operator/actions/workflows/build-tags.yml
 [kfp-tekton]: https://github.com/kubeflow/kfp-tekton
